@@ -20,6 +20,7 @@ executable diagrams-fun
     main-is:          Main.hs
     other-modules:    Flower
                     , Circle
+                    , Column
                     , Common
     -- other-extensions:
     build-depends:    base ^>=4.20.0.0
@@ -29,6 +30,7 @@ executable diagrams-fun
                     , diagrams-core
                     , diagrams-svg
                     , random
+                    , MonadRandom
                     , lens
                     , mtl
     hs-source-dirs:   app

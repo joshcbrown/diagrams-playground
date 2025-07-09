@@ -12,7 +12,7 @@ type Radius = Double
 type Count = Int
 type Circle = (P2 Double, Radius)
 data PackState = PackState {placedCircles :: [Circle]}
-type PackM = StateT PackState (Rand StdGen)
+type Pack = Rand StdGen
 
 circleSpecs :: [(Radius, Count)]
 circleSpecs = [(0.4, 2), (0.2, 10), (0.1, 30), (0.05, 50), (0.03, 100), (0.02, 100), (0.01, 50)]
@@ -26,7 +26,7 @@ maxStackSize = 3
 recurseRadius :: Double
 recurseRadius = 0.3
 
-randomPoint :: PackM (P2 Double)
+randomPoint :: Pack (P2 Double)
 randomPoint = do
   theta <- getRandomR (0.0, 2 * pi)
   u <- getRandomR (0.0, 1.0)
@@ -36,46 +36,36 @@ randomPoint = do
 intersects :: Circle -> Circle -> Bool
 intersects (c1, r1) (c2, r2) = distance c1 c2 <= r1 + r2
 
-genCircle :: Double -> Int -> PackM (Maybe (Circle, Int))
-genCircle r tries
-  | tries <= 0 = pure Nothing
-  | otherwise = do
-      candidate <- (,) <$> randomPoint <*> pure r
-      others <- gets placedCircles
-      let vecToCentre = fst candidate .-. origin
-          vecOut = vecToCentre ^+^ fromDirection (direction vecToCentre) ^* r
-      if (candidate `intersects`) `any` others || quadrance vecOut >= 1
-        then genCircle r (tries - 1)
-        else pure . Just $ (candidate, tries - 1)
-
--- NOTE: scale & spec aren't actually used at all but we retain them
+-- NOTE: scale & spec aren't actually used at all but i'm keeping them around
 -- for potential future experimentation
-circlePacking :: Double -> Int -> [(Double, Int)] -> PackM (Diagram B)
+circlePacking :: Double -> Int -> [(Double, Int)] -> Pack (Diagram B)
 circlePacking scale stackSize specs = do
-  modify (\s -> s{placedCircles = []})
-  traverse_ (uncurry placeNRadii) specs
-  circs <- gets placedCircles
+  circs <- flip execStateT [] $ traverse_ (uncurry placeNRadii) specs
   let (pts, rs) = unzip circs
-  diagrams <- traverse renderRadius rs
+  diagrams <- traverse (renderRadius) rs
   pure $
     atPoints pts diagrams
       # lw 0
       # centerXY
  where
-  placeNRadii :: Double -> Int -> PackM ()
+  -- this could take place in a reader monad but i think it's not worth it
+  placeNRadii :: Double -> Int -> StateT [Circle] Pack ()
   placeNRadii r n = go n maxPlacementTries
    where
     go 0 _ = pure ()
     go _ 0 = pure ()
     go toPlace tries = do
-      variance <- getRandomR (-r / 4, r / 3)
-      let randomizedRadius = max (min (r + variance) 0.9) 0.01
-      genCircle randomizedRadius tries >>= \case
-        Nothing -> pure ()
-        Just (c, tries') ->
-          modify (\s -> s{placedCircles = c : placedCircles s}) *> go (toPlace - 1) tries'
+      variance <- getRandomR (-r / 3, r / 3)
+      let randomisedRadius = max (min (r + variance) 0.9) 0.01
+      candidate <- (,) <$> lift randomPoint <*> pure randomisedRadius
+      others <- get
+      let vecToCentre = fst candidate .-. origin
+          vecOut = vecToCentre ^+^ fromDirection (direction vecToCentre) ^* r
+      if (candidate `intersects`) `any` others || quadrance vecOut >= 1
+        then go toPlace (tries - 1)
+        else modify (candidate :) *> go (toPlace - 1) (tries - 1)
 
-  renderRadius :: Double -> PackM (Diagram B)
+  renderRadius :: Double -> Pack (Diagram B)
   renderRadius r =
     if r >= recurseRadius && stackSize < maxStackSize
       then
@@ -94,7 +84,6 @@ circleMain :: IO ()
 circleMain = do
   gen <- getStdGen
   let out =
-        flip evalRand gen
-          . flip evalStateT (PackState [])
-          $ circlePacking 1 0 circleSpecs
+        flip evalRand gen $
+          circlePacking 1 0 circleSpecs
   mainWith (out # centerXY # frame 0.1)

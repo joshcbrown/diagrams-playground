@@ -15,13 +15,16 @@ data PackState = PackState {gen :: StdGen, placedCircles :: [Circle]}
 type PackM = State PackState
 
 circleSpecs :: [(Radius, Count)]
-circleSpecs = [(0.8, 1), (0.3, 10), (0.1, 30), (0.05, 50), (0.03, 100), (0.02, 100), (0.01, 50)]
+circleSpecs = [(0.4, 2), (0.2, 10), (0.1, 30), (0.05, 50), (0.03, 100), (0.02, 100), (0.01, 50)]
 
 maxPlacementTries :: Int
 maxPlacementTries = 100000
 
 maxStackSize :: Int
-maxStackSize = 20
+maxStackSize = 3
+
+recurseRadius :: Double
+recurseRadius = 0.3
 
 rand :: (Random a) => ((a, a) -> StdGen -> (a, StdGen)) -> (a, a) -> PackM a
 rand f x = do
@@ -48,33 +51,31 @@ genCircle r tries
       others <- gets placedCircles
       let vecToCentre = fst candidate .-. origin
           vecOut = vecToCentre ^+^ fromDirection (direction vecToCentre) ^* r
-      if any (candidate `intersects`) others || quadrance vecOut >= 1
+      if (candidate `intersects`) `any` others || quadrance vecOut >= 1
         then genCircle r (tries - 1)
         else pure . Just $ (candidate, tries - 1)
 
 -- NOTE: scale & spec aren't actually used at all but we retain them
 -- for potential future experimentation
-circlePacking :: Double -> Int -> [(Double, Int)] -> StdGen -> Diagram B
-circlePacking scale stackSize specs g = evalState genDiagram (PackState g [])
+circlePacking :: Double -> Int -> [(Double, Int)] -> PackM (Diagram B)
+circlePacking scale stackSize specs = do
+  modify (\s -> s{placedCircles = []})
+  traverse_ (uncurry placeNRadii) specs
+  circs <- gets placedCircles
+  let (pts, rs) = unzip circs
+  diagrams <- traverse renderRadius rs
+  pure $
+    atPoints pts diagrams
+      # lw 0
+      # centerXY
  where
-  genDiagram :: PackM (Diagram B)
-  genDiagram = do
-    traverse_ (uncurry placeNRadii) specs
-    circs <- gets placedCircles
-    let (pts, rs) = unzip circs
-    diagrams <- traverse renderRadius rs
-    pure $
-      atPoints pts diagrams
-        # lw 0
-        # centerXY
-
   placeNRadii :: Double -> Int -> PackM ()
   placeNRadii r n = go n maxPlacementTries
    where
     go 0 _ = pure ()
     go _ 0 = pure ()
     go toPlace tries = do
-      variance <- rand randomR (-r / 3, r / 3)
+      variance <- rand randomR (-r / 4, r / 3)
       let randomizedRadius = max (min (r + variance) 0.9) 0.01
       genCircle randomizedRadius tries >>= \case
         Nothing -> pure ()
@@ -83,14 +84,14 @@ circlePacking scale stackSize specs g = evalState genDiagram (PackState g [])
 
   renderRadius :: Double -> PackM (Diagram B)
   renderRadius r =
-    if r >= 0.5 && stackSize < maxStackSize
+    if r >= recurseRadius && stackSize < maxStackSize
       then
         let
           newSpec = specs -- TODO: experiment with modifying on recursive call
           newScale = r * scale
          in
           trace (show newScale) $
-            scaleUToX (2 * r) . circlePacking newScale (stackSize + 1) newSpec <$> gets gen
+            scaleUToX (2 * r) <$> circlePacking newScale (stackSize + 1) newSpec
       else do
         variance <- rand randomR (-0.05, 0.05)
         let colour = normPalette $ if even stackSize then 0.25 + variance else variance
@@ -99,4 +100,5 @@ circlePacking scale stackSize specs g = evalState genDiagram (PackState g [])
 circleMain :: IO ()
 circleMain = do
   gen <- getStdGen
-  mainWith (circlePacking 1 0 circleSpecs gen # centerXY # frame 0.1)
+  let out = evalState (circlePacking 1 0 circleSpecs) (PackState gen [])
+  mainWith (out # centerXY # frame 0.1)

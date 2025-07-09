@@ -1,14 +1,12 @@
 module Circle where
 
 import Common
-import Control.Arrow (Arrow (first))
 import Control.Monad.State.Strict
 import Data.Foldable (traverse_)
 import Debug.Trace
 import Diagrams.Backend.SVG.CmdLine
 import Diagrams.Prelude hiding (trace)
-import Diagrams.TwoD.Vector
-import System.Random (Random (randomR), RandomGen, StdGen, getStdGen)
+import System.Random (Random (randomR), StdGen, getStdGen)
 
 type Radius = Double
 type Count = Int

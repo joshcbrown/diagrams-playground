@@ -29,4 +29,4 @@ flower points =
     )
 
 flowerMain :: IO ()
-flowerMain = mainWith $ flower (phyllotaxisPoints 1000 0.5)
+flowerMain = mainWith $ flower (phyllotaxisPoints 1000 0.5) # centerXY # frame 0.1

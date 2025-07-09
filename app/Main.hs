@@ -8,4 +8,4 @@ import Circle
 import Flower
 
 main :: IO ()
-main = circleMain -- or flowerMain
+main = flowerMain -- or flowerMain

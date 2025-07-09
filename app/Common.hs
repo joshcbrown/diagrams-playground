@@ -1,13 +1,6 @@
 module Common where
 
-import Control.Arrow (Arrow (first))
-import Control.Monad.State.Strict
-import Data.Foldable (traverse_)
-import Debug.Trace
-import Diagrams.Backend.SVG.CmdLine
 import Diagrams.Prelude hiding (trace)
-import Diagrams.TwoD.Vector
-import System.Random (Random (randomR), RandomGen, StdGen, getStdGen)
 
 palette :: P3 Double -> P3 Double -> P3 Double -> P3 Double -> Double -> Colour Double
 palette a b c d t =
@@ -15,6 +8,7 @@ palette a b c d t =
       (r, g, b') = unp3 point
    in sRGB r g b'
 
+-- shoutout inigo quilez
 normPalette :: Double -> Colour Double
 normPalette =
   palette

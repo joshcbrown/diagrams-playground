@@ -1,18 +1,18 @@
 module Circle where
 
 import Common
+import Control.Monad.Random.Strict
 import Control.Monad.State.Strict
 import Data.Foldable (traverse_)
 import Debug.Trace
 import Diagrams.Backend.SVG.CmdLine
 import Diagrams.Prelude hiding (trace)
-import System.Random (Random (randomR), StdGen, getStdGen)
 
 type Radius = Double
 type Count = Int
 type Circle = (P2 Double, Radius)
-data PackState = PackState {gen :: StdGen, placedCircles :: [Circle]}
-type PackM = State PackState
+data PackState = PackState {placedCircles :: [Circle]}
+type PackM = StateT PackState (Rand StdGen)
 
 circleSpecs :: [(Radius, Count)]
 circleSpecs = [(0.4, 2), (0.2, 10), (0.1, 30), (0.05, 50), (0.03, 100), (0.02, 100), (0.01, 50)]
@@ -26,17 +26,10 @@ maxStackSize = 3
 recurseRadius :: Double
 recurseRadius = 0.3
 
-rand :: (Random a) => ((a, a) -> StdGen -> (a, StdGen)) -> (a, a) -> PackM a
-rand f x = do
-  g <- gets gen
-  let (out, g') = f x g
-  modify (\s -> s{gen = g'})
-  pure out
-
 randomPoint :: PackM (P2 Double)
 randomPoint = do
-  theta <- rand randomR (0.0, 2 * pi)
-  u <- rand randomR (0.0, 1.0)
+  theta <- getRandomR (0.0, 2 * pi)
+  u <- getRandomR (0.0, 1.0)
   let r = sqrt u
   pure . p2 $ (r * cos theta, r * sin theta)
 
@@ -75,7 +68,7 @@ circlePacking scale stackSize specs = do
     go 0 _ = pure ()
     go _ 0 = pure ()
     go toPlace tries = do
-      variance <- rand randomR (-r / 4, r / 3)
+      variance <- getRandomR (-r / 4, r / 3)
       let randomizedRadius = max (min (r + variance) 0.9) 0.01
       genCircle randomizedRadius tries >>= \case
         Nothing -> pure ()
@@ -93,12 +86,15 @@ circlePacking scale stackSize specs = do
           trace (show newScale) $
             scaleUToX (2 * r) <$> circlePacking newScale (stackSize + 1) newSpec
       else do
-        variance <- rand randomR (-0.05, 0.05)
+        variance <- getRandomR (-0.05, 0.05)
         let colour = normPalette $ if even stackSize then 0.25 + variance else variance
         pure $ circle r # fc colour
 
 circleMain :: IO ()
 circleMain = do
   gen <- getStdGen
-  let out = evalState (circlePacking 1 0 circleSpecs) (PackState gen [])
+  let out =
+        flip evalRand gen
+          . flip evalStateT (PackState [])
+          $ circlePacking 1 0 circleSpecs
   mainWith (out # centerXY # frame 0.1)

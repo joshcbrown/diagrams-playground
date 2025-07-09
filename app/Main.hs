@@ -9,4 +9,4 @@ import Column
 import Flower
 
 main :: IO ()
-main = columnMain -- or flowerMain
+main = circleMain -- or flowerMain

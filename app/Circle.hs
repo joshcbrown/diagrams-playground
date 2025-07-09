@@ -4,6 +4,7 @@ import Common
 import Control.Monad.Random.Strict
 import Control.Monad.State.Strict
 import Data.Foldable (traverse_)
+import Data.List (scanl')
 import Debug.Trace
 import Diagrams.Backend.SVG.CmdLine
 import Diagrams.Prelude hiding (trace)
@@ -40,7 +41,7 @@ intersects (c1, r1) (c2, r2) = distance c1 c2 <= r1 + r2
 -- for potential future experimentation
 circlePacking :: Double -> Int -> [(Double, Int)] -> Pack (Diagram B)
 circlePacking scale stackSize specs = do
-  circs <- flip execStateT [] $ traverse_ (uncurry placeNRadii) specs
+  circs <- foldl' (uncurry . placeNRadii) (pure []) specs
   let (pts, rs) = unzip circs
   diagrams <- traverse (renderRadius) rs
   pure $
@@ -48,22 +49,21 @@ circlePacking scale stackSize specs = do
       # lw 0
       # centerXY
  where
-  -- this could take place in a reader monad but i think it's not worth it
-  placeNRadii :: Double -> Int -> StateT [Circle] Pack ()
-  placeNRadii r n = go n maxPlacementTries
+  placeNRadii :: Pack [Circle] -> Double -> Int -> Pack [Circle]
+  placeNRadii placedBefore r n = placedBefore >>= go n maxPlacementTries
    where
-    go 0 _ = pure ()
-    go _ 0 = pure ()
-    go toPlace tries = do
+    go :: Int -> Int -> [Circle] -> Pack [Circle]
+    go 0 _ placed = pure placed
+    go _ 0 placed = pure placed
+    go toPlace tries placed = do
       variance <- getRandomR (-r / 3, r / 3)
       let randomisedRadius = max (min (r + variance) 0.9) 0.01
-      candidate <- (,) <$> lift randomPoint <*> pure randomisedRadius
-      others <- get
+      candidate <- (,) <$> randomPoint <*> pure randomisedRadius
       let vecToCentre = fst candidate .-. origin
           vecOut = vecToCentre ^+^ fromDirection (direction vecToCentre) ^* r
-      if (candidate `intersects`) `any` others || quadrance vecOut >= 1
-        then go toPlace (tries - 1)
-        else modify (candidate :) *> go (toPlace - 1) (tries - 1)
+      if any (candidate `intersects`) placed || quadrance vecOut >= 1
+        then go toPlace (tries - 1) placed
+        else go (toPlace - 1) (tries - 1) (candidate : placed)
 
   renderRadius :: Double -> Pack (Diagram B)
   renderRadius r =
